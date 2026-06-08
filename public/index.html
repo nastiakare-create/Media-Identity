@@ -23,9 +23,98 @@
         <li>Node.js-сервер <code>server.js</code></li>
         <li>статическая страница <code>public/index.html</code></li>
         <li>конфигурация Railway в <code>Procfile</code></li>
+        <li>подключённая PostgreSQL-база данных</li>
       </ul>
       <p>Чтобы увидеть содержимое проекта, откройте <code>README.md</code> и <code>CLAUDE.md</code>.</p>
       <p>Для финального деплоя нужно подключить этот репозиторий к Railway и включить автодеплой.</p>
+
+      <hr />
+
+      <h2>Тест базы данных</h2>
+      <p>Ниже можно сохранить сообщение в базе данных и увидеть сохранённые записи.</p>
+
+      <form id="message-form">
+        <label>
+          Имя<br />
+          <input type="text" id="name" required />
+        </label>
+        <label>
+          Email<br />
+          <input type="email" id="email" />
+        </label>
+        <label>
+          Сообщение<br />
+          <textarea id="message" rows="4" required></textarea>
+        </label>
+        <button type="submit">Отправить</button>
+      </form>
+
+      <div id="status"></div>
+
+      <h3>Последние сообщения</h3>
+      <button id="refresh">Обновить список</button>
+      <div id="messages"></div>
     </main>
+    <script>
+      const form = document.getElementById('message-form');
+      const status = document.getElementById('status');
+      const messagesEl = document.getElementById('messages');
+      const refresh = document.getElementById('refresh');
+
+      async function loadMessages() {
+        messagesEl.textContent = 'Загрузка...';
+        try {
+          const response = await fetch('/api/messages');
+          const messages = await response.json();
+          if (!Array.isArray(messages)) {
+            messagesEl.textContent = 'Ошибка загрузки сообщений.';
+            return;
+          }
+          if (messages.length === 0) {
+            messagesEl.textContent = 'Сообщений пока нет.';
+            return;
+          }
+          messagesEl.innerHTML = messages
+            .map(
+              (item) =>
+                `<div style="margin-bottom:18px;padding:16px;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa;"><strong>${item.name}</strong> <span style="color:#6b7280;">${new Date(item.created_at).toLocaleString()}</span><br /><div style="margin-top:8px;">${item.message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div><div style="margin-top:8px;color:#475569;">${item.email || ''}</div></div>`
+            )
+            .join('');
+        } catch (error) {
+          messagesEl.textContent = 'Ошибка при загрузке сообщений.';
+        }
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        status.textContent = 'Отправка...';
+        const data = {
+          name: document.getElementById('name').value.trim(),
+          email: document.getElementById('email').value.trim(),
+          message: document.getElementById('message').value.trim(),
+        };
+
+        try {
+          const response = await fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            status.textContent = result.error || 'Ошибка при сохранении сообщения.';
+            return;
+          }
+          status.textContent = 'Сообщение сохранено.';
+          form.reset();
+          loadMessages();
+        } catch (error) {
+          status.textContent = 'Ошибка сети.';
+        }
+      });
+
+      refresh.addEventListener('click', () => loadMessages());
+      loadMessages();
+    </script>
   </body>
 </html>
