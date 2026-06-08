@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const { Pool } = require('pg');
+const { createClient } = require('redis');
 
 const app = express();
 app.use(express.json());
@@ -14,6 +15,26 @@ const pool = connectionString
       },
     })
   : null;
+
+const redisUrl = process.env.REDIS_URL;
+const redisClient = redisUrl
+  ? createClient({
+      url: redisUrl,
+    })
+  : null;
+
+async function initRedis() {
+  if (!redisClient) {
+    console.warn('REDIS_URL is not set. Redis features are disabled.');
+    return;
+  }
+
+  redisClient.on('error', (error) => {
+    console.error('Redis client error:', error);
+  });
+
+  await redisClient.connect();
+}
 
 async function initDb() {
   if (!pool) {
@@ -34,6 +55,10 @@ async function initDb() {
 
 initDb().catch((error) => {
   console.error('Failed to initialize database:', error);
+});
+
+initRedis().catch((error) => {
+  console.error('Failed to initialize Redis:', error);
 });
 
 app.get('/api/messages', async (req, res) => {
@@ -85,6 +110,27 @@ app.get('/api/health', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ status: 'error', error: 'Database check failed.' });
+  }
+});
+
+app.get('/api/redis-test', async (req, res) => {
+  if (!redisClient) {
+    return res.status(500).json({ error: 'Redis is not configured.' });
+  }
+
+  const cacheKey = 'media_identity_redis_test';
+  try {
+    const cachedValue = await redisClient.get(cacheKey);
+    if (cachedValue) {
+      return res.json({ cached: true, value: cachedValue });
+    }
+
+    const value = 'saved-from-redis';
+    await redisClient.set(cacheKey, value, { EX: 60 });
+    return res.json({ cached: false, value });
+  } catch (error) {
+    console.error('Redis test error:', error);
+    res.status(500).json({ error: 'Redis test failed.' });
   }
 });
 
